@@ -18,8 +18,14 @@ workspace you're looking at, and clicking one brings it back.
 ## Install
 
 ```bash
+omarchy plugin add https://github.com/McNutty/omarchy-minimized.git --enable
+```
+
+For development, symlink a checkout instead (saved changes hot-reload):
+
+```bash
 ln -s ~/Code/personal/omarchy-minimized ~/.config/omarchy/plugins/thord.minimized
-omarchy plugin enable thord.minimized --section left --after thord.workspaces
+omarchy plugin enable thord.minimized --section left --after omarchy.workspaces
 ```
 
 Bind a key in `~/.config/hypr/bindings.lua`:
