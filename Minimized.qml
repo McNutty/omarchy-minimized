@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -110,6 +111,34 @@ BarWidget {
     var move = "hl.dsp.window.move({ window = \"address:" + addr + "\", workspace = \"" + root.activeWsId + "\" })"
     var focus = "hl.dsp.focus({ window = \"address:" + addr + "\" })"
     root.bar.run("hyprctl dispatch " + Util.shellQuote(move) + " && hyprctl dispatch " + Util.shellQuote(focus))
+  }
+
+  // Keyboard restore: `omarchy-shell thord.minimized restoreLast` brings back the
+  // window most recently minimized from the focused workspace. Hidden windows
+  // can't take focus, so the lowest focusHistoryID on special:min-<id> is the
+  // newest one. Uses hyprctl's fresh client list rather than lastIpcObject,
+  // which may lag. The IPC call reaches one bar instance, so it acts on the
+  // focused workspace, not on this instance's monitor.
+  readonly property string restoreLastScript:
+    'addr=$(hyprctl -j clients | jq -r --arg ws "' + prefix + '$1" ' +
+    '\'[.[] | select(.workspace.name == $ws)] | min_by(.focusHistoryID) | .address // empty\')\n' +
+    '[ -n "$addr" ] || exit 0\n' +
+    'hyprctl dispatch "hl.dsp.window.move({ window = \\"address:$addr\\", workspace = \\"$1\\" })" &&\n' +
+    'hyprctl dispatch "hl.dsp.focus({ window = \\"address:$addr\\" })"\n'
+
+  function restoreLast() {
+    var ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+    if (ws < 1 || restoreLastProc.running) return
+    restoreLastProc.command = ["sh", "-c", root.restoreLastScript, "sh", String(ws)]
+    restoreLastProc.running = true
+  }
+
+  Process { id: restoreLastProc }
+
+  IpcHandler {
+    target: "thord.minimized"
+
+    function restoreLast(): void { root.restoreLast() }
   }
 
   readonly property real trailingGap: root.vertical || root.windows.length === 0 ? 0 : Style.spaceReal(1.5)

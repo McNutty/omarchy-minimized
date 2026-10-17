@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "thord.minimized",
   "name": "Minimized windows",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Martin Gjerde",
   "license": "MIT",
   "description": "Per-workspace minimized windows in the bar: Super+M hides the active window, click its icon to restore it.",
