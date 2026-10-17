@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "thord.minimized",
+  "name": "Minimized windows",
+  "version": "0.1.0",
+  "author": "Martin Gjerde",
+  "license": "MIT",
+  "description": "Per-workspace minimized windows in the bar: Super+M hides the active window, click its icon to restore it.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Minimized.qml"
+  },
+  "barWidget": {
+    "displayName": "Minimized windows",
+    "description": "Icons for windows minimized from the workspace this bar's monitor shows",
+    "category": "Compositor",
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}
