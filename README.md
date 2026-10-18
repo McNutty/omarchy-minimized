@@ -1,32 +1,67 @@
-# Minimized windows (Omarchy bar widget)
+# Workspaces plus (Omarchy bar widget)
 
-Per-workspace minimize for Omarchy (Hyprland + Quickshell). A keybinding hides
-the active window; the bar shows icons for the windows hidden from the
-workspace you're looking at, and clicking one brings it back.
+A replacement for Omarchy's workspaces widget (Hyprland + Quickshell) that
+puts four things in one row, each of which can be turned off:
 
-## How it works
+- **Workspaces per monitor.** Each monitor's bar highlights the workspace that
+  monitor is showing, not the globally focused one. It lists the workspaces
+  open on that monitor plus those a Hyprland workspace rule assigns to it (as
+  hyprmoncfg writes them). Without rules it shows 1-5 plus every open
+  workspace, like the stock widget.
+- **Layout.** A small label with the workspace's layout (Dwindle, Scrolling,
+  Master, ...), optionally clickable to run a command of yours.
+- **Window state.** An accent-coloured word for the focused window: `Max`,
+  `Tiled FS`, `Float`, `Pop out` (floating and pinned), `Group i/n`, and
+  `Square` while Omarchy's single-window square aspect toggle applies.
+- **Minimized windows.** Icons for the windows minimized from the workspace
+  that monitor is showing. Hover for the title, click to restore.
 
-- Minimizing moves the window to the hidden Hyprland workspace
-  `special:min-<workspace id>` without following it.
-- The widget (`thord.minimized`) reads the workspace its own monitor shows and
-  lists the windows on the matching `special:min-<id>`. Other workspaces'
-  minimized windows stay out of view. Hover for the title, click to move the
-  window back and focus it, or restore the newest one from the keyboard (see IPC).
-- Hyprland holds all state, so a shell restart or plugin reload loses nothing.
-  The widget takes no space when the list is empty.
+It is a clone of `omarchy.workspaces` (`clonedFrom` in the manifest), so it
+takes that widget's place and calls aimed at the stock widget reach it.
 
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/McNutty/omarchy-minimized.git --enable
+omarchy plugin add https://github.com/McNutty/omarchy-workspaces.git --enable
 ```
 
-For development, symlink a checkout instead (saved changes hot-reload):
+Then take `omarchy.workspaces` out of the bar if it is still there. For
+development, symlink a checkout instead and run `omarchy restart shell` after
+editing (a plugin hot-reload can keep running the old code):
 
 ```bash
-ln -s ~/Code/personal/omarchy-minimized ~/.config/omarchy/plugins/thord.minimized
-omarchy plugin enable thord.minimized --section left --after omarchy.workspaces
+ln -s ~/Code/personal/omarchy-workspaces ~/.config/omarchy/plugins/thord.workspaces
 ```
+
+## Settings
+
+Fields on the widget's entry in `~/.config/omarchy/shell.json`. A missing flag
+counts as on:
+
+```json
+{ "id": "thord.workspaces", "layoutCycleCommand": "$HOME/.local/bin/workspace-layout-cycle" }
+```
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `perMonitor` | `true` | `false`: every bar lists 1-5 plus every open workspace. The highlight stays per monitor. |
+| `showLayout` | `true` | `false`: no layout label. |
+| `layoutCycleCommand` | `""` | Shell command run with the workspace id appended when the layout label is clicked. Empty: the label is display-only. |
+| `showWindowState` | `true` | `false`: no window state label. |
+| `showMinimized` | `true` | `false`: no minimized icons, and `restoreLast` does nothing. |
+
+Hyprland sends no event when a layout rule changes, so the label re-reads the
+layout on workspace and monitor switches and reloads. A layout command can
+update it at once with `hyprctl dispatch event thord.layout:changed`. Likewise
+a binding that changes client-only fullscreen can send
+`thord.window:changed`.
+
+## Minimizing
+
+Minimizing moves the window to the hidden workspace `special:min-<workspace id>`
+without following it; the widget lists the windows on the one matching the
+workspace its monitor shows. Hyprland holds all state, so a shell restart
+loses nothing, and the icons take no space when there are none.
 
 Bind keys in `~/.config/hypr/bindings.lua`: one to minimize, and optionally one
 to restore the most recently minimized window of the focused workspace:
@@ -37,15 +72,21 @@ o.bind("SUPER + M", "Minimize window", function()
   if not (win and win.workspace) or win.workspace.special then return end
   hl.dispatch(hl.dsp.window.move({ workspace = "special:min-" .. win.workspace.id, follow = false }))
 end)
-o.bind("SUPER + ALT + M", "Restore last minimized window", "omarchy-shell -q thord.minimized restoreLast")
+o.bind("SUPER + ALT + M", "Restore last minimized window", "omarchy-shell -q thord.workspaces restoreLast")
 ```
 
 ## IPC
 
 | Command | Effect |
 | --- | --- |
-| `omarchy-shell thord.minimized restoreLast` | Restore the window most recently minimized from the focused workspace (newest first, so repeated calls work like a stack). |
+| `omarchy-shell thord.workspaces restoreLast` | Restore the window most recently minimized from the focused workspace (newest first, so repeated calls work like a stack). |
 
 If `omarchy-shell` reports "Target not found" right after installing or
-updating, run `omarchy restart shell`: a plugin hot-reload doesn't always
-register a new IPC target.
+updating, run `omarchy restart shell`.
+
+## Upgrading from omarchy-minimized
+
+This repo was `omarchy-minimized` (plugin `thord.minimized`) up to 0.2.0.
+Remove that plugin from the bar, change the restore binding from
+`thord.minimized` to `thord.workspaces`, and install this one. Windows already
+on `special:min-<id>` show up again as before.

@@ -8,35 +8,25 @@ import qs.Commons
 import qs.Ui
 
 // Windows minimized from a workspace live on the hidden Hyprland workspace
-// "special:min-<id>" (the Super+M binding puts them there). This widget shows
-// the ones belonging to the workspace its own monitor is displaying; clicking
-// an icon moves that window back and focuses it. Hyprland holds all the state,
-// so a shell restart or plugin reload loses nothing.
-BarWidget {
+// "special:min-<id>" (the Super+M binding puts them there). This part of the
+// widget shows the ones belonging to the workspace its own monitor is
+// displaying; clicking an icon moves that window back and focuses it. Hyprland
+// holds all the state, so a shell restart or plugin reload loses nothing.
+// Workspaces.qml supplies bar, wsId and vertical, and turns it off with active.
+Item {
   id: root
-  moduleName: "thord.minimized"
 
+  property QtObject bar: null
+  property int wsId: -1
+  property bool vertical: false
+  property bool active: true
+
+  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property string prefix: "special:min-"
 
-  // One bar surface exists per monitor; resolve the one this instance is on.
-  readonly property string screenName:
-    root.QsWindow && root.QsWindow.window && root.QsWindow.window.screen
-      ? String(root.QsWindow.window.screen.name || "") : ""
-
-  readonly property var thisMonitor: {
-    var mons = Hyprland.monitors.values
-    for (var i = 0; i < mons.length; i++) {
-      if (String(mons[i].name) === root.screenName) return mons[i]
-    }
-    return null
-  }
-
-  readonly property int activeWsId:
-    thisMonitor && thisMonitor.activeWorkspace ? thisMonitor.activeWorkspace.id
-      : (Hyprland.focusedWorkspace !== null ? Hyprland.focusedWorkspace.id : -1)
-
   readonly property var minimizedWorkspace: {
-    var name = root.prefix + root.activeWsId
+    if (!root.active) return null
+    var name = root.prefix + root.wsId
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
       if (String(values[i].name) === name) return values[i]
@@ -50,6 +40,7 @@ BarWidget {
   // refresh, so refresh whenever a window lands on or leaves a min workspace.
   Connections {
     target: Hyprland
+    enabled: root.active
     function onRawEvent(event) {
       var name = String(event.name)
       if (name.indexOf("movewindow") === 0 || name.indexOf("openwindow") === 0 || name.indexOf("windowtitle") === 0)
@@ -105,15 +96,15 @@ BarWidget {
   }
 
   function restore(top) {
-    if (!root.bar || !top || root.activeWsId < 1) return
+    if (!root.bar || !top || root.wsId < 1) return
     var addr = String(top.address || "")
     if (addr.indexOf("0x") !== 0) addr = "0x" + addr
-    var move = "hl.dsp.window.move({ window = \"address:" + addr + "\", workspace = \"" + root.activeWsId + "\" })"
+    var move = "hl.dsp.window.move({ window = \"address:" + addr + "\", workspace = \"" + root.wsId + "\" })"
     var focus = "hl.dsp.focus({ window = \"address:" + addr + "\" })"
     root.bar.run("hyprctl dispatch " + Util.shellQuote(move) + " && hyprctl dispatch " + Util.shellQuote(focus))
   }
 
-  // Keyboard restore: `omarchy-shell thord.minimized restoreLast` brings back the
+  // Keyboard restore: `omarchy-shell thord.workspaces restoreLast` brings back the
   // window most recently minimized from the focused workspace. Hidden windows
   // can't take focus, so the lowest focusHistoryID on special:min-<id> is the
   // newest one. Uses hyprctl's fresh client list rather than lastIpcObject,
@@ -128,29 +119,20 @@ BarWidget {
 
   function restoreLast() {
     var ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
-    if (ws < 1 || restoreLastProc.running) return
+    if (!root.active || ws < 1 || restoreLastProc.running) return
     restoreLastProc.command = ["sh", "-c", root.restoreLastScript, "sh", String(ws)]
     restoreLastProc.running = true
   }
 
   Process { id: restoreLastProc }
 
-  IpcHandler {
-    target: "thord.minimized"
-
-    function restoreLast(): void { root.restoreLast() }
-  }
-
-  readonly property real trailingGap: root.vertical || root.windows.length === 0 ? 0 : Style.spaceReal(1.5)
-
-  visible: root.windows.length > 0
-  implicitWidth: visible ? grid.implicitWidth + trailingGap : 0
+  visible: root.active && root.windows.length > 0
+  implicitWidth: visible ? grid.implicitWidth : 0
   implicitHeight: visible ? grid.implicitHeight : 0
 
   GridLayout {
     id: grid
     anchors.fill: parent
-    anchors.rightMargin: root.trailingGap
     columns: root.vertical ? 1 : Math.max(1, root.windows.length)
     columnSpacing: 0
     rowSpacing: 0
