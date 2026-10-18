@@ -8,7 +8,8 @@ import qs.Ui
 
 // A clone of Omarchy's workspaces widget: each bar lists and highlights its own
 // monitor's workspaces, followed by the workspace's layout, the state of its
-// focused window, and the windows minimized from it (Minimized.qml).
+// focused window, the windows open on it (Windows.qml) and the windows
+// minimized from it (Minimized.qml).
 // Settings are fields on this widget's entry in ~/.config/omarchy/shell.json.
 // The shell passes the entry as-is, without the manifest defaults, so a missing
 // flag counts as on:
@@ -17,6 +18,7 @@ import qs.Ui
 //   layoutCycleCommand  run with the workspace id when the label is clicked;
 //                       empty (the default) leaves the label display-only
 //   showWindowState     false: no Max / Float / Group label
+//   showWindows         false: no icons for the workspace's open windows
 //   showMinimized       false: no minimized icons, restoreLast does nothing
 BarWidget {
   id: root
@@ -29,6 +31,7 @@ BarWidget {
   readonly property bool perMonitor: flag("perMonitor")
   readonly property bool showLayout: flag("showLayout")
   readonly property bool showWindowState: flag("showWindowState")
+  readonly property bool showWindows: flag("showWindows")
   readonly property bool showMinimized: flag("showMinimized")
   readonly property string layoutCycleCommand:
     root.settings && root.settings.layoutCycleCommand ? String(root.settings.layoutCycleCommand) : ""
@@ -257,6 +260,11 @@ BarWidget {
     function restoreLast(): void { minimized.restoreLast() }
   }
 
+  AppIcons {
+    id: appIcons
+    bar: root.bar
+  }
+
   function focusWorkspace(id) {
     if (!root.bar) return
     root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
@@ -267,14 +275,14 @@ BarWidget {
   implicitWidth: row.implicitWidth + trailingGap
   implicitHeight: row.implicitHeight
 
-  // Numbers, layout, window state and minimized icons in one row (one column
-  // on a vertical bar, where only the numbers and icons show). The layout skips
-  // hidden items, so turning a part off closes its gap.
+  // Numbers, layout, window state, open windows and minimized icons in one row
+  // (one column on a vertical bar, where only the numbers and icons show). The
+  // layout skips hidden items, so turning a part off closes its gap.
   GridLayout {
     id: row
     anchors.fill: parent
     anchors.rightMargin: root.trailingGap
-    columns: root.vertical ? 1 : 4
+    columns: root.vertical ? 1 : 6
     columnSpacing: 0
     rowSpacing: root.vertical ? Style.space(2) : 0
 
@@ -337,13 +345,37 @@ BarWidget {
       tooltipText: "State of this workspace's focused window"
     }
 
-    Minimized {
-      id: minimized
+    Windows {
+      id: openWindows
       Layout.leftMargin: root.vertical ? 0 : Style.spaceReal(1.5)
       bar: root.bar
       wsId: root.activeWsId
       vertical: root.vertical
+      active: root.showWindows
+      icons: appIcons
+    }
+
+    // Thin line between open and minimized windows, only when both show.
+    Rectangle {
+      visible: openWindows.visible && minimized.visible
+      Layout.alignment: Qt.AlignCenter
+      Layout.leftMargin: root.vertical ? 0 : Style.spaceReal(1)
+      Layout.rightMargin: root.vertical ? 0 : Style.spaceReal(1)
+      Layout.topMargin: root.vertical ? Style.spaceReal(1) : 0
+      Layout.bottomMargin: root.vertical ? Style.spaceReal(1) : 0
+      implicitWidth: root.vertical ? Math.round(root.barSize * 0.5) : 1
+      implicitHeight: root.vertical ? 1 : Math.round(root.barSize * 0.5)
+      color: Color.muted
+    }
+
+    Minimized {
+      id: minimized
+      Layout.leftMargin: root.vertical || openWindows.visible ? 0 : Style.spaceReal(1.5)
+      bar: root.bar
+      wsId: root.activeWsId
+      vertical: root.vertical
       active: root.showMinimized
+      icons: appIcons
     }
   }
 }

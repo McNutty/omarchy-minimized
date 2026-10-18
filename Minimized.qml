@@ -12,7 +12,8 @@ import qs.Ui
 // widget shows the ones belonging to the workspace its own monitor is
 // displaying; clicking an icon moves that window back and focuses it. Hyprland
 // holds all the state, so a shell restart or plugin reload loses nothing.
-// Workspaces.qml supplies bar, wsId and vertical, and turns it off with active.
+// Workspaces.qml supplies bar, wsId, vertical and icons (the shared AppIcons
+// lookup), and turns it off with active. Icons are dimmed to read as hidden.
 Item {
   id: root
 
@@ -20,6 +21,7 @@ Item {
   property int wsId: -1
   property bool vertical: false
   property bool active: true
+  property QtObject icons: null
 
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property string prefix: "special:min-"
@@ -46,53 +48,6 @@ Item {
       if (name.indexOf("movewindow") === 0 || name.indexOf("openwindow") === 0 || name.indexOf("windowtitle") === 0)
         Hyprland.refreshToplevels()
     }
-  }
-
-  function normalize(value) {
-    var s = String(value === undefined || value === null ? "" : value).trim().toLowerCase()
-    return s.slice(-8) === ".desktop" ? s.slice(0, -8) : s
-  }
-
-  // Desktop entry for a window: exact id, StartupWMClass or name first. Chromium
-  // web apps (class "chrome-<domain>__<path>-Default") match the entry whose Exec
-  // opens that domain; requiring "://<domain>" avoids loose word matches.
-  function entryFor(top) {
-    var ipc = top && top.lastIpcObject ? top.lastIpcObject : {}
-    var appId = top && top.wayland ? top.wayland.appId : ""
-    var candidates = [normalize(appId), normalize(ipc.class), normalize(ipc.initialClass)]
-      .filter(function(c, i, all) { return c !== "" && all.indexOf(c) === i })
-    var entries = DesktopEntries.applications ? DesktopEntries.applications.values : []
-    var fields = ["id", "startupClass", "name"]
-
-    for (var f = 0; f < fields.length; f++) {
-      for (var c = 0; c < candidates.length; c++) {
-        for (var e = 0; e < entries.length; e++) {
-          if (entries[e] && !entries[e].noDisplay && normalize(entries[e][fields[f]]) === candidates[c])
-            return { entry: entries[e], fallback: candidates[0] || "" }
-        }
-      }
-    }
-
-    for (var w = 0; w < candidates.length; w++) {
-      var m = candidates[w].match(/^(?:chrome|chromium|brave|msedge)-([^_]+)__/)
-      if (!m) continue
-      var needle = "://" + m[1]
-      for (var k = 0; k < entries.length; k++) {
-        var exec = String(entries[k] && (entries[k].execString || entries[k].exec) || "").toLowerCase()
-        if (exec.indexOf(needle) !== -1) return { entry: entries[k], fallback: candidates[0] }
-      }
-    }
-
-    return { entry: null, fallback: candidates[0] || "" }
-  }
-
-  function iconFor(top) {
-    var found = entryFor(top)
-    var name = found.entry ? String(found.entry.icon || "") : found.fallback
-    var lib = root.bar && root.bar.shell ? root.bar.shell.appLibrary : null
-    var source = lib && typeof lib.iconSource === "function" ? String(lib.iconSource(name) || "") : ""
-    if (!source && name) source = Quickshell.iconPath(name, true)
-    return source || Quickshell.iconPath("application-x-executable", true)
   }
 
   function restore(top) {
@@ -149,9 +104,10 @@ Item {
         fixedHeight: root.barSize
         tooltipText: String(button.modelData.title || "") + "\nClick to restore"
         useActiveColor: false
+        opacity: tooltipHovered ? 1 : 0.55
         iconComponent: Component {
           Image {
-            source: root.iconFor(button.modelData)
+            source: root.icons ? root.icons.iconFor(button.modelData) : ""
             fillMode: Image.PreserveAspectFit
             sourceSize.width: Math.round(Style.bar.iconCanvas * Screen.devicePixelRatio)
             sourceSize.height: Math.round(Style.bar.iconCanvas * Screen.devicePixelRatio)
