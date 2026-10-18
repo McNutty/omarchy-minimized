@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
+import qs.Commons
 
 // Icon lookup shared by the open-windows and minimized icons. One instance
 // lives in Workspaces.qml; both parts call iconFor(toplevel).
@@ -9,8 +11,10 @@ import Quickshell.Hyprland
 // Gomareli (github.com/tornikegomareli/omarchy-spaces, MIT): app id candidates
 // including the tail of a reverse-DNS id, Quickshell's heuristic lookup,
 // Chromium-family web apps by host, and windows the shell itself hosts (all
-// "org.quickshell") told apart by title. The icon file itself comes from the
-// shell's app library, which keeps its own index of app icons.
+// "org.quickshell") told apart by title. Icon names resolve through an index
+// of the app icons on disk (scalable first, then the largest raster), as Spaces
+// does: the shell's own index isn't reachable from a third-party widget, and
+// the theme lookup misses icons such as a 1024px PNG under hicolor.
 QtObject {
   id: root
 
@@ -18,6 +22,8 @@ QtObject {
 
   property var cache: ({})
   property int revision: 0
+  property var iconIndex: ({})
+  property var pendingIndex: ({})
 
   function appIdOf(top) {
     if (top && top.wayland && top.wayland.appId) return String(top.wayland.appId)
@@ -67,10 +73,32 @@ QtObject {
     return null
   }
 
+  function iconPathScore(path) {
+    var p = String(path || "")
+    if (/\.svg$/i.test(p)) return 100000
+    var m = /\/(\d+)x\d+\//.exec(p)
+    if (m) return Number(m[1])
+    return /\/pixmaps\//.test(p) ? 48 : 1
+  }
+
+  function indexLine(line) {
+    var path = String(line || "").trim()
+    if (path === "") return
+    var file = path.slice(path.lastIndexOf("/") + 1)
+    var dot = file.lastIndexOf(".")
+    var name = dot > 0 ? file.slice(0, dot) : file
+    var existing = root.pendingIndex[name]
+    if (!existing || root.iconPathScore(path) > root.iconPathScore(existing)) root.pendingIndex[name] = path
+  }
+
   function iconUrl(name) {
-    var lib = root.bar && root.bar.shell ? root.bar.shell.appLibrary : null
-    if (lib && typeof lib.iconSource === "function") return String(lib.iconSource(name) || "")
-    return Quickshell.iconPath(String(name || "") || "application-x-executable", true)
+    var value = String(name || "")
+    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    var indexed = value !== "" ? root.iconIndex[value] : ""
+    if (indexed) return Util.fileUrl(indexed)
+    var themed = value !== "" ? Quickshell.iconPath(value, true) : ""
+    return themed || Quickshell.iconPath("application-x-executable", true)
   }
 
   // Cached per app id; windows the shell hosts cache per title instead, since
@@ -108,8 +136,30 @@ QtObject {
   property Timer debounce: Timer {
     id: debounce
     interval: 1500
-    onTriggered: root.invalidate()
+    onTriggered: scan.running = true
   }
 
-  Component.onCompleted: DesktopEntries.applications.values
+  // Non-login shell on purpose: a login shell can touch ~/.local/share and
+  // retrigger desktop-entry watchers.
+  property Process scan: Process {
+    id: scan
+    command: ["bash", "-c", [
+      'dirs="$HOME/.icons $HOME/.local/share/icons";',
+      'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
+      'for base in $dirs; do [[ -d $base ]] && find "$base" -path "*/apps/*" \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null; done;',
+      'find /usr/share/pixmaps -maxdepth 1 \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null'
+    ].join(" ")]
+    stdout: SplitParser { onRead: function(line) { root.indexLine(line) } }
+    onStarted: root.pendingIndex = ({})
+    onExited: {
+      root.iconIndex = root.pendingIndex
+      root.invalidate()
+    }
+  }
+
+  Component.onCompleted: {
+    // Touching the list starts Quickshell's desktop-entry scan.
+    DesktopEntries.applications.values
+    scan.running = true
+  }
 }

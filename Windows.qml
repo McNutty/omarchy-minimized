@@ -23,8 +23,10 @@ Item {
 
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
 
-  // Bumped after a debounced toplevel refresh: positions and focus come from
-  // lastIpcObject, which changes without a property signal.
+  // Bumped after a debounced toplevel refresh: positions come from
+  // lastIpcObject, which changes without a property signal. Focus does too
+  // until the shell has seen a focus change (activeToplevel is null after a
+  // restart); then focusHistoryID 0 marks the focused window.
   property int revision: 0
 
   readonly property var windows: {
@@ -44,7 +46,7 @@ Item {
       var ipc = tops[j].lastIpcObject || {}
       list.push({
         top: tops[j],
-        focused: activeTop ? tops[j] === activeTop : !!(tops[j].wayland && tops[j].wayland.activated),
+        focused: activeTop ? tops[j] === activeTop : ipc.focusHistoryID === 0,
         at: ipc.at && ipc.at.length === 2 ? ipc.at : null,
         index: j
       })
@@ -87,6 +89,8 @@ Item {
     interval: 80
     onTriggered: root.revision++
   }
+
+  Component.onCompleted: refreshDebounce.restart()
 
   function addressOf(top) {
     var addr = String(top && top.address || "")
